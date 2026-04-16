@@ -3,116 +3,97 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ZALIK Scanner</title>
+    <title>AI Document Scanner</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script async src="https://docs.opencv.org/4.x/opencv.js" id="opencv-src"></script>
 
     <style>
         :root {
-            --bg: #000;
-            --accent: #3b82f6;
+            --bg: #0f172a;
+            --card: #1e293b;
+            --primary: #3b82f6;
             --success: #10b981;
+            --danger: #ef4444;
+            --text: #f8fafc;
         }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
         body {
-            font-family: sans-serif;
-            margin: 0;
-            background: var(--bg);
-            color: white;
-            height: 100vh;
+            font-family: -apple-system, system-ui, sans-serif;
+            margin: 0; padding: 0;
+            background: var(--bg); color: var(--text);
+            height: 100vh; display: flex; flex-direction: column;
             overflow: hidden;
-            display: flex;
-            flex-direction: column;
         }
 
+        header {
+            padding: 15px; text-align: center; background: var(--card);
+            border-bottom: 1px solid #334155; z-index: 10;
+        }
+
+        #status { font-size: 12px; font-weight: bold; color: #94a3b8; }
+
         .viewport {
-            flex: 1;
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            flex: 1; position: relative; background: #000;
+            display: flex; align-items: center; justify-content: center;
         }
 
         video, #previewImg {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
+            width: 100%; height: 100%; object-fit: contain;
         }
 
-        /* Рамка фокусування та прогрес-бар */
+        /* Скануючий оверлей */
         #scannerOverlay {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 80%;
-            height: 60%;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 10px;
-            pointer-events: none;
+            position: absolute; width: 85%; height: 65%;
+            border: 2px solid rgba(255,255,255,0.4);
+            border-radius: 15px; pointer-events: none;
+            box-shadow: 0 0 0 5000px rgba(0,0,0,0.5);
         }
 
         .progress-container {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 60%;
-            height: 6px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 3px;
-            display: none;
+            position: absolute; bottom: 30px; width: 70%;
+            height: 8px; background: rgba(255,255,255,0.2);
+            border-radius: 4px; display: none; overflow: hidden;
         }
 
         #progressBar {
-            width: 0%;
-            height: 100%;
-            background: var(--success);
-            border-radius: 3px;
+            width: 0%; height: 100%; background: var(--success);
             transition: width 0.1s linear;
         }
 
         .controls {
-            background: #1a1a1a;
-            padding: 20px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
+            background: var(--card); padding: 20px;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
             padding-bottom: env(safe-area-inset-bottom, 20px);
         }
 
         button {
-            padding: 15px;
-            border-radius: 10px;
-            border: none;
-            font-weight: bold;
-            color: white;
-            background: #333;
+            border: none; border-radius: 12px; padding: 16px;
+            font-size: 14px; font-weight: 700; color: white;
+            background: #334155; cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
         }
 
-        .btn-main { grid-column: span 2; background: var(--accent); }
+        button:active { transform: scale(0.98); }
+        button:disabled { opacity: 0.3; }
+
+        .btn-main { grid-column: span 2; background: var(--primary); }
         .btn-save { grid-column: span 2; background: var(--success); }
-        
-        #status {
-            position: absolute;
-            top: 10px;
-            width: 100%;
-            text-align: center;
-            font-size: 12px;
-            background: rgba(0,0,0,0.5);
-            padding: 5px 0;
-        }
+        .btn-danger { background: var(--danger); }
 
         canvas { display: none; }
     </style>
 </head>
 <body>
 
-<div id="status">Завантаження системи...</div>
+<header>
+    <div id="status">ІНІЦІАЛІЗАЦІЯ...</div>
+</header>
 
 <div class="viewport">
-    <video id="video" autoplay playsinline></video>
+    <video id="video" autoplay playsinline muted></video>
     <div id="scannerOverlay"></div>
     <div class="progress-container" id="pContainer">
         <div id="progressBar"></div>
@@ -121,135 +102,151 @@
 </div>
 
 <div class="controls">
-    <button id="captureBtn" class="btn-main" disabled>ЗАФІКСУВАТИ ВРУЧНУ</button>
-    <button id="retakeBtn" style="display: none;">ПЕРЕЗНЯТИ</button>
-    <button id="filterBtn" disabled>ФІЛЬТР</button>
-    <button id="saveBtn" class="btn-save" disabled>ЗБЕРЕГТИ PDF</button>
+    <button id="captureBtn" class="btn-main" disabled>📸 ВРУЧНУ</button>
+    <button id="retakeBtn" class="btn-danger" style="display: none;">🔄 ПЕРЕЗНЯТИ</button>
+    <button id="filterBtn" disabled>🌓 ФІЛЬТР</button>
+    <button id="saveBtn" class="btn-save" disabled>📄 ЗБЕРЕГТИ PDF</button>
 </div>
 
-<canvas id="canvas"></canvas>
-<!-- Маленький канвас для аналізу руху -->
+<canvas id="mainCanvas"></canvas>
 <canvas id="motionCanvas" width="64" height="64"></canvas>
 
 <script>
     const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
+    const mainCanvas = document.getElementById('mainCanvas');
     const motionCanvas = document.getElementById('motionCanvas');
     const previewImg = document.getElementById('previewImg');
     const progressBar = document.getElementById('progressBar');
     const pContainer = document.getElementById('pContainer');
     const status = document.getElementById('status');
     
+    let isScanning = false;
     let lastFrameData = null;
     let stabilityCounter = 0;
-    const STABILITY_THRESHOLD = 15; // Чим менше, тим чутливіше до руху
-    const AUTO_CAPTURE_TIME = 20;   // Кількість циклів для автозйомки (~1.5 сек)
-    let isScanning = true;
+    const STABILITY_REQ = 25; // Скільки кадрів телефон має бути нерухомим
 
+    // 1. Перевірка OpenCV та Камери
     document.getElementById('opencv-src').onload = () => {
-        status.innerText = "Тримайте телефон нерухомо над документом";
-        document.getElementById('captureBtn').disabled = false;
-        startCamera();
-        requestAnimationFrame(analyzeFrame);
+        if (!window.isSecureContext && window.location.protocol !== 'file:') {
+            status.innerText = "ПОМИЛКА: ПОТРІБЕН HTTPS";
+            status.style.color = "var(--danger)";
+        } else {
+            status.innerText = "СИСТЕМА ГОТОВА: ЗАМРІТЬ НАД ДОКУМЕНТОМ";
+            startCamera();
+        }
     };
 
     async function startCamera() {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: "environment", width: 1280, height: 720 } 
-        });
-        video.srcObject = stream;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } 
+            });
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                isScanning = true;
+                document.getElementById('captureBtn').disabled = false;
+                requestAnimationFrame(analyzeMotion);
+            };
+        } catch (err) {
+            status.innerText = "ДОСТУП ДО КАМЕРИ ЗАБОРОНЕНО";
+            status.style.color = "var(--danger)";
+        }
     }
 
-    // Аналіз руху для автозйомки
-    function analyzeFrame() {
+    // 2. Логіка автозйомки (Аналіз руху)
+    function analyzeMotion() {
         if (!isScanning) return;
 
         const mCtx = motionCanvas.getContext('2d');
         mCtx.drawImage(video, 0, 0, 64, 64);
-        const currentFrameData = mCtx.getImageData(0, 0, 64, 64).data;
+        const currentData = mCtx.getImageData(0, 0, 64, 64).data;
 
         if (lastFrameData) {
             let diff = 0;
-            for (let i = 0; i < currentFrameData.length; i += 4) {
-                diff += Math.abs(currentFrameData[i] - lastFrameData[i]);
+            for (let i = 0; i < currentData.length; i += 4) {
+                diff += Math.abs(currentData[i] - lastFrameData[i]);
             }
             
-            const movement = diff / (64 * 64);
+            const motion = diff / 4096; // Середня зміна на піксель
 
-            if (movement < STABILITY_THRESHOLD) {
+            if (motion < 12) { // Поріг чутливості
                 stabilityCounter++;
                 pContainer.style.display = 'block';
-                progressBar.style.width = (stabilityCounter / AUTO_CAPTURE_TIME * 100) + '%';
+                progressBar.style.width = (stabilityCounter / STABILITY_REQ * 100) + '%';
                 
-                if (stabilityCounter >= AUTO_CAPTURE_TIME) {
-                    capture();
+                if (stabilityCounter >= STABILITY_REQ) {
+                    captureImage();
                 }
             } else {
                 stabilityCounter = 0;
                 progressBar.style.width = '0%';
             }
         }
-
-        lastFrameData = currentFrameData;
-        requestAnimationFrame(analyzeFrame);
+        lastFrameData = currentData;
+        requestAnimationFrame(analyzeMotion);
     }
 
-    function capture() {
+    // 3. Захоплення та обробка
+    function captureImage() {
         isScanning = false;
-        stabilityCounter = 0;
         pContainer.style.display = 'none';
         
-        const ctx = canvas.getContext('2d');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        const ctx = mainCanvas.getContext('2d');
+        mainCanvas.width = video.videoWidth;
+        mainCanvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0);
         
-        previewImg.src = canvas.toDataURL('image/jpeg');
+        // Візуальне перемикання
+        previewImg.src = mainCanvas.toDataURL('image/jpeg', 0.9);
         previewImg.style.display = 'block';
         video.style.display = 'none';
         document.getElementById('scannerOverlay').style.display = 'none';
         
         document.getElementById('captureBtn').style.display = 'none';
-        document.getElementById('retakeBtn').style.display = 'block';
+        document.getElementById('retakeBtn').style.display = 'flex';
         document.getElementById('filterBtn').disabled = false;
         document.getElementById('saveBtn').disabled = false;
         
-        status.innerText = "Знімок зроблено!";
+        status.innerText = "ЗНІМОК ГОТОВИЙ";
     }
 
-    document.getElementById('captureBtn').onclick = capture;
+    document.getElementById('captureBtn').onclick = captureImage;
 
     document.getElementById('retakeBtn').onclick = () => {
         isScanning = true;
         video.style.display = 'block';
         previewImg.style.display = 'none';
         document.getElementById('scannerOverlay').style.display = 'block';
-        document.getElementById('captureBtn').style.display = 'block';
+        document.getElementById('captureBtn').style.display = 'flex';
         document.getElementById('retakeBtn').style.display = 'none';
         document.getElementById('filterBtn').disabled = true;
         document.getElementById('saveBtn').disabled = true;
-        status.innerText = "Тримайте телефон нерухомо";
-        requestAnimationFrame(analyzeFrame);
+        stabilityCounter = 0;
+        status.innerText = "ЗАМРІТЬ НАД ДОКУМЕНТОМ";
+        requestAnimationFrame(analyzeMotion);
     };
 
+    // 4. Фільтр OpenCV
     document.getElementById('filterBtn').onclick = () => {
-        let src = cv.imread(canvas);
+        let src = cv.imread(mainCanvas);
         cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
-        cv.adaptiveThreshold(src, src, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 21, 10);
-        cv.imshow(canvas, src);
-        previewImg.src = canvas.toDataURL('image/jpeg');
+        // Адаптивний поріг для ефекту відсканованого паперу
+        cv.adaptiveThreshold(src, src, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 21, 12);
+        cv.imshow(mainCanvas, src);
+        previewImg.src = mainCanvas.toDataURL('image/jpeg');
         src.delete();
     };
 
+    // 5. Експорт у PDF
     document.getElementById('saveBtn').onclick = () => {
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({
-            orientation: canvas.width > canvas.height ? 'l' : 'p',
+            orientation: mainCanvas.width > mainCanvas.height ? 'l' : 'p',
             unit: 'px',
-            format: [canvas.width, canvas.height]
+            format: [mainCanvas.width, mainCanvas.height]
         });
-        pdf.addImage(canvas.toDataURL('image/jpeg'), 'JPEG', 0, 0, canvas.width, canvas.height);
-        pdf.save("scan_ai.pdf");
+        pdf.addImage(mainCanvas.toDataURL('image/jpeg', 0.8), 'JPEG', 0, 0, mainCanvas.width, mainCanvas.height);
+        pdf.save("document_scan.pdf");
     };
 </script>
 </body>
