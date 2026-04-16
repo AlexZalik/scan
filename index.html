@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart JS Scanner</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script async src="https://docs.opencv.org/4.x/opencv.js" id="opencv-src"></script>
+
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #059669;
+            --danger: #dc2626;
+        }
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f8fafc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+        #status {
+            font-size: 12px;
+            color: #64748b;
+            margin-bottom: 10px;
+        }
+        video, canvas {
+            width: 100%;
+            border-radius: 8px;
+            background: #000;
+            margin-bottom: 15px;
+        }
+        #canvas { display: none; } /* Прихований полотно для обробки */
+        
+        .preview-container {
+            border: 2px dashed #cbd5e1;
+            padding: 10px;
+            margin-bottom: 15px;
+            min-height: 200px;
+            display: flex;
+            justify-content: center;
+        }
+        #previewImg {
+            max-width: 100%;
+            height: auto;
+            display: none;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        button {
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn-capture { background: var(--primary); color: white; grid-column: span 2; }
+        .btn-filter { background: #e2e8f0; color: #1e293b; }
+        .btn-save { background: var(--success); color: white; grid-column: span 2; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Сканер документів</h2>
+    <div id="status">Завантаження модулів...</div>
+    
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <div class="preview-container">
+        <img id="previewImg" src="" alt="Результат">
+        <div id="placeholder">Тут з'явиться відсканований кадр</div>
+    </div>
+
+    <div class="controls">
+        <button id="captureBtn" class="btn-capture" disabled>Зробити фото</button>
+        <button id="cropBtn" class="btn-filter" disabled>Авто-обрізка</button>
+        <button id="filterBtn" class="btn-filter" disabled>Ч/Б фільтр</button>
+        <button id="saveBtn" class="btn-save" disabled>Зберегти у PDF</button>
+    </div>
+</div>
+
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const previewImg = document.getElementById('previewImg');
+    const status = document.getElementById('status');
+    
+    const captureBtn = document.getElementById('captureBtn');
+    const cropBtn = document.getElementById('cropBtn');
+    const filterBtn = document.getElementById('filterBtn');
+    const saveBtn = document.getElementById('saveBtn');
+
+    // 1. Чекаємо завантаження OpenCV
+    document.getElementById('opencv-src').onload = () => {
+        status.innerText = "Система готова до роботи";
+        status.style.color = "green";
+        captureBtn.disabled = false;
+        startCamera();
+    };
+
+    // 2. Запуск камери
+    async function startCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment" }, 
+                audio: false 
+            });
+            video.srcObject = stream;
+        } catch (err) {
+            status.innerText = "Помилка камери: " + err.message;
+        }
+    }
+
+    // 3. Захоплення кадру
+    captureBtn.onclick = () => {
+        const ctx = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        
+        updatePreview();
+        document.getElementById('placeholder').style.display = 'none';
+        previewImg.style.display = 'block';
+        cropBtn.disabled = false;
+        filterBtn.disabled = false;
+        saveBtn.disabled = false;
+    };
+
+    function updatePreview() {
+        previewImg.src = canvas.toDataURL('image/jpeg');
+    }
+
+    // 4. Фільтр (Адаптивний поріг для тексту)
+    filterBtn.onclick = () => {
+        let src = cv.imread(canvas);
+        cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
+        // Створюємо ефект сканера (білий фон, чорний текст)
+        cv.adaptiveThreshold(src, src, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 15, 8);
+        cv.imshow(canvas, src);
+        updatePreview();
+        src.delete();
+    };
+
+    // 5. Авто-обрізка (Пошук контурів)
+    cropBtn.onclick = () => {
+        let src = cv.imread(canvas);
+        let gray = new cv.Mat();
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+        cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+        cv.Canny(gray, gray, 75, 200);
+
+        let contours = new cv.MatVector();
+        let hierarchy = new cv.Mat();
+        cv.findContours(gray, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        let maxArea = 0;
+        let maxCnt = null;
+
+        for (let i = 0; i < contours.size(); ++i) {
+            let cnt = contours.get(i);
+            let area = cv.contourArea(cnt);
+            if (area > maxArea) {
+                maxArea = area;
+                maxCnt = cnt;
+            }
+        }
+
+        if (maxCnt && maxArea > 10000) {
+            let rect = cv.boundingRect(maxCnt);
+            let dst = src.roi(rect);
+            cv.imshow(canvas, dst);
+            updatePreview();
+            dst.delete();
+        } else {
+            alert("Не вдалося чітко знайти межі документа");
+        }
+
+        src.delete(); gray.delete(); contours.delete(); hierarchy.delete();
+    };
+
+    // 6. Збереження в PDF
+    saveBtn.onclick = () => {
+        const { jsPDF } = window.jspdf;
+        const imgData = canvas.toDataURL('image/jpeg', 1.0);
+        
+        // Створюємо PDF за розміром зображення
+        const pdf = new jsPDF({
+            orientation: canvas.width > canvas.height ? 'l' : 'p',
+            unit: 'px',
+            format: [canvas.width, canvas.height]
+        });
+
+        pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
+        pdf.save("document_scan.pdf");
+    };
+</script>
+
+</body>
+</html>
