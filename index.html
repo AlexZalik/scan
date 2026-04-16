@@ -2,100 +2,156 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart JS Scanner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mobile Document Scanner</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script async src="https://docs.opencv.org/4.x/opencv.js" id="opencv-src"></script>
 
     <style>
         :root {
-            --primary: #2563eb;
-            --success: #059669;
-            --danger: #dc2626;
+            --bg: #121212;
+            --card: #1e1e1e;
+            --primary: #3b82f6;
+            --success: #10b981;
+            --text: #ffffff;
         }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
         body {
-            font-family: -apple-system, system-ui, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* Запобігаємо скролу на мобілках */
+        }
+
+        /* Шапка */
+        header {
+            padding: 15px;
+            text-align: center;
+            background: var(--card);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        #status {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #94a3b8;
+        }
+
+        /* Робоча область */
+        .viewport {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+        }
+
+        video, #previewImg {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        canvas { display: none; }
+
+        /* Панель керування */
+        .controls {
+            background: var(--card);
             padding: 20px;
-            background: #f8fafc;
+            border-top-left-radius: 20px;
+            border-top-right-radius: 20px;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            padding-bottom: env(safe-area-inset-bottom, 20px); /* Підтримка iPhone з "бровкою" */
+        }
+
+        button {
+            border: none;
+            border-radius: 12px;
+            padding: 15px 5px;
+            font-size: 14px;
+            font-weight: 600;
+            color: white;
+            background: #334155;
             display: flex;
             flex-direction: column;
             align-items: center;
+            gap: 5px;
+            transition: transform 0.1s, background 0.2s;
         }
-        .container {
-            width: 100%;
-            max-width: 600px;
-            background: white;
-            padding: 20px;
-            border-radius: 15px;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+
+        button:active {
+            transform: scale(0.95);
         }
-        #status {
-            font-size: 12px;
-            color: #64748b;
-            margin-bottom: 10px;
+
+        .btn-main {
+            grid-column: span 2;
+            background: var(--primary);
+            font-size: 16px;
+            padding: 18px;
         }
-        video, canvas {
-            width: 100%;
-            border-radius: 8px;
-            background: #000;
-            margin-bottom: 15px;
+
+        .btn-save {
+            grid-column: span 2;
+            background: var(--success);
         }
-        #canvas { display: none; } /* Прихований полотно для обробки */
-        
-        .preview-container {
-            border: 2px dashed #cbd5e1;
-            padding: 10px;
-            margin-bottom: 15px;
-            min-height: 200px;
-            display: flex;
-            justify-content: center;
+
+        button:disabled {
+            opacity: 0.3;
+            filter: grayscale(1);
         }
-        #previewImg {
-            max-width: 100%;
-            height: auto;
-            display: none;
-        }
-        .controls {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-        button {
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-        .btn-capture { background: var(--primary); color: white; grid-column: span 2; }
-        .btn-filter { background: #e2e8f0; color: #1e293b; }
-        .btn-save { background: var(--success); color: white; grid-column: span 2; }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Іконки (спрощені через CSS) */
+        .icon { width: 20px; height: 20px; border: 2px solid currentColor; border-radius: 50%; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>Сканер документів</h2>
-    <div id="status">Завантаження модулів...</div>
-    
+<header>
+    <div id="status">Завантаження OpenCV...</div>
+</header>
+
+<div class="viewport">
     <video id="video" autoplay playsinline></video>
+    <img id="previewImg" style="display: none;">
     <canvas id="canvas"></canvas>
+</div>
 
-    <div class="preview-container">
-        <img id="previewImg" src="" alt="Результат">
-        <div id="placeholder">Тут з'явиться відсканований кадр</div>
-    </div>
+<div class="controls">
+    <button id="captureBtn" class="btn-main" disabled>
+        <span>📸</span> ЗРОБИТИ ЗНІМОК
+    </button>
+    
+    <button id="cropBtn" disabled>
+        <span>📐</span> ОБРІЗКА
+    </button>
+    
+    <button id="filterBtn" disabled>
+        <span>🌓</span> ФІЛЬТР
+    </button>
 
-    <div class="controls">
-        <button id="captureBtn" class="btn-capture" disabled>Зробити фото</button>
-        <button id="cropBtn" class="btn-filter" disabled>Авто-обрізка</button>
-        <button id="filterBtn" class="btn-filter" disabled>Ч/Б фільтр</button>
-        <button id="saveBtn" class="btn-save" disabled>Зберегти у PDF</button>
-    </div>
+    <button id="retakeBtn" style="display: none;">
+        <span>🔄</span> ПЕРЕЗНЯТИ
+    </button>
+
+    <button id="saveBtn" class="btn-save" disabled>
+        <span>📄</span> ЗБЕРЕГТИ У PDF
+    </button>
 </div>
 
 <script>
@@ -108,59 +164,71 @@
     const cropBtn = document.getElementById('cropBtn');
     const filterBtn = document.getElementById('filterBtn');
     const saveBtn = document.getElementById('saveBtn');
+    const retakeBtn = document.getElementById('retakeBtn');
 
-    // 1. Чекаємо завантаження OpenCV
+    // Чекаємо завантаження OpenCV
     document.getElementById('opencv-src').onload = () => {
-        status.innerText = "Система готова до роботи";
-        status.style.color = "green";
+        status.innerText = "Система готова";
+        status.style.color = "#10b981";
         captureBtn.disabled = false;
         startCamera();
     };
 
-    // 2. Запуск камери
     async function startCamera() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment" }, 
+                video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }, 
                 audio: false 
             });
             video.srcObject = stream;
         } catch (err) {
-            status.innerText = "Помилка камери: " + err.message;
+            status.innerText = "Доступ заборонено";
         }
     }
 
-    // 3. Захоплення кадру
     captureBtn.onclick = () => {
         const ctx = canvas.getContext('2d');
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0);
         
-        updatePreview();
-        document.getElementById('placeholder').style.display = 'none';
-        previewImg.style.display = 'block';
-        cropBtn.disabled = false;
-        filterBtn.disabled = false;
-        saveBtn.disabled = false;
+        showPreview(true);
     };
 
-    function updatePreview() {
-        previewImg.src = canvas.toDataURL('image/jpeg');
+    retakeBtn.onclick = () => {
+        showPreview(false);
+    };
+
+    function showPreview(isCaptured) {
+        if (isCaptured) {
+            previewImg.src = canvas.toDataURL('image/jpeg');
+            previewImg.style.display = 'block';
+            video.style.display = 'none';
+            captureBtn.style.display = 'none';
+            retakeBtn.style.display = 'flex';
+            cropBtn.disabled = false;
+            filterBtn.disabled = false;
+            saveBtn.disabled = false;
+        } else {
+            previewImg.style.display = 'none';
+            video.style.display = 'block';
+            captureBtn.style.display = 'flex';
+            retakeBtn.style.display = 'none';
+            cropBtn.disabled = true;
+            filterBtn.disabled = true;
+            saveBtn.disabled = true;
+        }
     }
 
-    // 4. Фільтр (Адаптивний поріг для тексту)
     filterBtn.onclick = () => {
         let src = cv.imread(canvas);
         cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
-        // Створюємо ефект сканера (білий фон, чорний текст)
-        cv.adaptiveThreshold(src, src, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 15, 8);
+        cv.adaptiveThreshold(src, src, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 21, 10);
         cv.imshow(canvas, src);
-        updatePreview();
+        previewImg.src = canvas.toDataURL('image/jpeg');
         src.delete();
     };
 
-    // 5. Авто-обрізка (Пошук контурів)
     cropBtn.onclick = () => {
         let src = cv.imread(canvas);
         let gray = new cv.Mat();
@@ -184,35 +252,32 @@
             }
         }
 
-        if (maxCnt && maxArea > 10000) {
+        if (maxCnt && maxArea > (canvas.width * canvas.height * 0.1)) {
             let rect = cv.boundingRect(maxCnt);
             let dst = src.roi(rect);
+            canvas.width = rect.width;
+            canvas.height = rect.height;
             cv.imshow(canvas, dst);
-            updatePreview();
+            previewImg.src = canvas.toDataURL('image/jpeg');
             dst.delete();
         } else {
-            alert("Не вдалося чітко знайти межі документа");
+            alert("Покладіть документ на контрастний фон");
         }
 
         src.delete(); gray.delete(); contours.delete(); hierarchy.delete();
     };
 
-    // 6. Збереження в PDF
     saveBtn.onclick = () => {
         const { jsPDF } = window.jspdf;
-        const imgData = canvas.toDataURL('image/jpeg', 1.0);
-        
-        // Створюємо PDF за розміром зображення
+        const imgData = canvas.toDataURL('image/jpeg', 0.9);
         const pdf = new jsPDF({
             orientation: canvas.width > canvas.height ? 'l' : 'p',
             unit: 'px',
             format: [canvas.width, canvas.height]
         });
-
         pdf.addImage(imgData, 'JPEG', 0, 0, canvas.width, canvas.height);
-        pdf.save("document_scan.pdf");
+        pdf.save("scan.pdf");
     };
 </script>
-
 </body>
 </html>
